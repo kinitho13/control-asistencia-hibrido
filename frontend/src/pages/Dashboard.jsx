@@ -1,6 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-
-const API_URL = "http://localhost:8000";
+import { API_URL } from "../config";
 
 const MESES = [
   "Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio",

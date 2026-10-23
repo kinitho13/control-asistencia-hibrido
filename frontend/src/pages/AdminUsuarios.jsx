@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { API_URL } from "../config";
 
-const API_URL = "http://localhost:8000";
 const ROLES = ["ADMIN", "LIDER", "USUARIO"];
 const MIN_PASSWORD = 6;
 

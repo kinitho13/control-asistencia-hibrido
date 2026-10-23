@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-
-const API_URL = "http://localhost:8000";
+import { API_URL } from "../config";
 
 // "2026-10-20" o "2026-10-20T00:00:00" -> "2026-10-20" (sin desfase de zona horaria)
 const claveFecha = (valor) => String(valor).slice(0, 10);

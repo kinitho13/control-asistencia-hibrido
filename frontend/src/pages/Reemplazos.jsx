@@ -1,7 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-
-// Cambia esta URL si tu backend corre en otro host o puerto.
-const API_URL = "http://127.0.0.1:8000";
+import { API_URL } from "../config";
 
 const MESES = [
   "Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio",

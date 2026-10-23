@@ -1,6 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-
-const API_URL = "http://localhost:8000";
+import { API_URL } from "../config";
 
 const MESES = [
   "Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio",
@@ -37,11 +36,11 @@ function Gantt() {
 
   // ---------- Carga de datos ----------
   useEffect(() => {
-fetch("http://localhost:8000/calendario")
+fetch(`${API_URL}/calendario`)
     .then((r) => r.json())
     .then((data) => setDatos(data));
 
-  fetch("http://localhost:8000/festivos")
+  fetch(`${API_URL}/festivos`)
     .then((r) => r.json())
     .then((data) => setFestivos(data));
 

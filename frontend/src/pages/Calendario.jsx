@@ -1,10 +1,9 @@
 import { useEffect, useMemo, useState } from "react";
+import { API_URL } from "../config";
 
 import FullCalendar from "@fullcalendar/react";
 import dayGridPlugin from "@fullcalendar/daygrid";
 import esLocale from "@fullcalendar/core/locales/es";
-
-const API_URL = "http://localhost:8000";
 
 const MODALIDADES = {
   CASA: { etiqueta: "Casa", clase: "evento--casa" },

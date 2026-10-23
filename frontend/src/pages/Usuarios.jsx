@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-
-const API_URL = "http://localhost:8000";
+import { API_URL } from "../config";
 
 /** Intenta leer el mensaje de error que envía el servidor (campo "detail"). */
 const leerError = async (res, porDefecto) => {
