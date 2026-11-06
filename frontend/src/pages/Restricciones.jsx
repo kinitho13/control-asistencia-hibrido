@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { API_URL } from "../config";
+import { API_URL, apiFetch } from "../config";
 
 function Restricciones() {
   const [usuarios, setUsuarios] = useState([]);
@@ -15,7 +15,7 @@ function Restricciones() {
 
   // ---------- Carga de datos ----------
   const cargarRestricciones = useCallback(async () => {
-    const res = await fetch(`${API_URL}/restricciones`);
+    const res = await apiFetch("/restricciones");
     if (!res.ok) throw new Error("No se pudieron cargar las restricciones.");
     setRestricciones(await res.json());
   }, []);
@@ -24,7 +24,7 @@ function Restricciones() {
     const cargarTodo = async () => {
       try {
         setCargando(true);
-        const resUsuarios = await fetch(`${API_URL}/usuarios`);
+        const resUsuarios = await apiFetch("/usuarios");
         if (!resUsuarios.ok) throw new Error("No se pudieron cargar los usuarios.");
         setUsuarios(await resUsuarios.json());
         await cargarRestricciones();
@@ -82,7 +82,7 @@ function Restricciones() {
         usuario2_id: usuario2,
       });
 
-      const res = await fetch(`${API_URL}/restricciones?${params}`, { method: "POST" });
+      const res = await apiFetch(`/restricciones?${params}`, { method: "POST" });
       if (!res.ok) throw new Error();
 
       setUsuario1("");
@@ -98,7 +98,7 @@ function Restricciones() {
 
   const eliminarRestriccion = async (id) => {
     try {
-      const res = await fetch(`${API_URL}/restricciones/${id}`, { method: "DELETE" });
+      const res = await apiFetch(`/restricciones/${id}`, { method: "DELETE" });
       if (!res.ok) throw new Error();
 
       setIdPorEliminar(null);
@@ -259,7 +259,7 @@ const estilos = `
   --peligro: #e11d48;
   --exito: #0f9d7a;
 
-  font-family: "Inter", "Segoe UI", system-ui, -apple-system, sans-serif;
+  font-family: var(--sans);
   color: var(--tinta);
   background: var(--fondo);
   padding: 32px clamp(16px, 4vw, 48px);

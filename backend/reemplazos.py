@@ -13,7 +13,17 @@ from sqlalchemy import func
 from sqlalchemy.orm import Session, sessionmaker
 
 from database import engine
-from models import Asistencia, Festivo, Reemplazo, Usuario, Suplente
+from auth import usuario_actual, usuario_actual_opcional
+from models import (
+    Asistencia,
+    Auditoria,
+    CierreOficina,
+    Festivo,
+    Notificacion,
+    Reemplazo,
+    Suplente,
+    Usuario,
+)
 
 router = APIRouter(tags=["reemplazos"])
 SessionLocal = sessionmaker(bind=engine)
@@ -66,6 +76,46 @@ def limpiar_motivo(motivo: str | None) -> str | None:
     return motivo or None
 
 
+def oficina_cerrada(db: Session, fecha: date) -> bool:
+    return (
+        db.query(CierreOficina.id)
+        .filter(CierreOficina.fecha_inicio <= fecha, CierreOficina.fecha_fin >= fecha)
+        .first()
+        is not None
+    )
+
+
+def validar_actor(
+    db: Session, actor_id: int | None, sesion: Usuario | None
+) -> Usuario | None:
+    if actor_id is None:
+        return None
+    if not sesion:
+        raise HTTPException(status_code=401, detail="Inicia sesión para registrar el responsable del cambio.")
+    if actor_id != sesion.id:
+        raise HTTPException(status_code=403, detail="El responsable no coincide con la sesión.")
+    return db.query(Usuario).filter(Usuario.id == sesion.id).first()
+
+
+def auditar_reemplazo(
+    db: Session,
+    actor: Usuario | None,
+    accion: str,
+    reemplazo: Reemplazo,
+    detalle: str,
+) -> None:
+    db.add(
+        Auditoria(
+            actor_id=actor.id if actor else None,
+            actor_nombre=actor.nombre if actor else "Sistema",
+            accion=accion,
+            entidad="reemplazo",
+            entidad_id=reemplazo.id,
+            detalle=detalle,
+        )
+    )
+
+
 def reemplazos_con_nombres(db: Session, inicio: date | None = None, fin: date | None = None) -> list[dict]:
     consulta = (
         db.query(
@@ -107,16 +157,19 @@ def crear_reemplazo(
     usuario_id: int,
     suplente_id: int,
     motivo: str | None = None,
+    actor_id: int | None = None,
     db: Session = Depends(get_db),
+    usuario_sesion: Usuario | None = Depends(usuario_actual_opcional),
 ):
+    actor = validar_actor(db, actor_id, usuario_sesion)
     usuario_o_404(db, usuario_id)
     suplente_o_404(db, suplente_id)
 
     if fecha.weekday() >= 5:
         raise HTTPException(status_code=400, detail="No se registran reemplazos en fines de semana.")
 
-    if db.query(Festivo).filter(Festivo.fecha == fecha).first():
-        raise HTTPException(status_code=400, detail="Esa fecha es festivo.")
+    if db.query(Festivo).filter(Festivo.fecha == fecha).first() or oficina_cerrada(db, fecha):
+        raise HTTPException(status_code=400, detail="Esa fecha es festivo o la oficina está cerrada.")
 
     asistencia = db.query(Asistencia).filter(
         Asistencia.usuario_id == usuario_id, Asistencia.fecha == fecha
@@ -146,6 +199,20 @@ def crear_reemplazo(
         motivo=limpiar_motivo(motivo),
     )
     db.add(reemplazo)
+    db.flush()
+    auditar_reemplazo(
+        db,
+        actor,
+        "CREAR",
+        reemplazo,
+        f"Registró reemplazo para usuario {usuario_id} el {fecha}.",
+    )
+    db.add(
+        Notificacion(
+            usuario_id=usuario_id,
+            mensaje=f"Se registró un reemplazo para tu jornada del {fecha}.",
+        )
+    )
     db.commit()
     db.refresh(reemplazo)
 
@@ -180,9 +247,12 @@ def editar_reemplazo(
     reemplazo_id: int,
     suplente_id: int,
     motivo: str | None = None,
+    actor_id: int | None = None,
     db: Session = Depends(get_db),
+    usuario_sesion: Usuario | None = Depends(usuario_actual_opcional),
 ):
     """Cambia quién reemplaza o el motivo. Para cambiar fecha o usuario, borra y crea de nuevo."""
+    actor = validar_actor(db, actor_id, usuario_sesion)
     reemplazo = db.query(Reemplazo).filter(Reemplazo.id == reemplazo_id).first()
     if not reemplazo:
         raise HTTPException(status_code=404, detail="Reemplazo no encontrado.")
@@ -199,8 +269,22 @@ def editar_reemplazo(
             status_code=409, detail="Esa persona ya está reemplazando a otro usuario ese día."
         )
 
+    suplente_anterior_id = reemplazo.suplente_id
     reemplazo.suplente_id = suplente_id
     reemplazo.motivo = limpiar_motivo(motivo)
+    auditar_reemplazo(
+        db,
+        actor,
+        "EDITAR",
+        reemplazo,
+        f"Actualizó el reemplazo del {reemplazo.fecha}; suplente {suplente_anterior_id} → {suplente_id}.",
+    )
+    db.add(
+        Notificacion(
+            usuario_id=reemplazo.usuario_id,
+            mensaje=f"Se actualizó el reemplazo de tu jornada del {reemplazo.fecha}.",
+        )
+    )
     db.commit()
     db.refresh(reemplazo)
 
@@ -214,11 +298,30 @@ def editar_reemplazo(
 
 
 @router.delete("/reemplazos/{reemplazo_id}")
-def eliminar_reemplazo(reemplazo_id: int, db: Session = Depends(get_db)):
+def eliminar_reemplazo(
+    reemplazo_id: int,
+    actor_id: int | None = None,
+    db: Session = Depends(get_db),
+    usuario_sesion: Usuario | None = Depends(usuario_actual_opcional),
+):
+    actor = validar_actor(db, actor_id, usuario_sesion)
     reemplazo = db.query(Reemplazo).filter(Reemplazo.id == reemplazo_id).first()
     if not reemplazo:
         raise HTTPException(status_code=404, detail="Reemplazo no encontrado.")
 
+    auditar_reemplazo(
+        db,
+        actor,
+        "ELIMINAR",
+        reemplazo,
+        f"Eliminó el reemplazo del {reemplazo.fecha} para usuario {reemplazo.usuario_id}.",
+    )
+    db.add(
+        Notificacion(
+            usuario_id=reemplazo.usuario_id,
+            mensaje=f"Se eliminó el reemplazo de tu jornada del {reemplazo.fecha}.",
+        )
+    )
     db.delete(reemplazo)
     db.commit()
     return {"mensaje": "Reemplazo eliminado"}
@@ -227,7 +330,8 @@ def eliminar_reemplazo(reemplazo_id: int, db: Session = Depends(get_db)):
 @router.post("/suplentes")
 def crear_suplente(
     nombre: str,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    actor: Usuario = Depends(usuario_actual),
 ):
 
     nombre = nombre.strip()
@@ -262,7 +366,8 @@ def crear_suplente(
 
 @router.get("/suplentes")
 def listar_suplentes(
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    actor: Usuario = Depends(usuario_actual),
 ):
 
     suplentes = db.query(
@@ -277,7 +382,8 @@ def listar_suplentes(
 def editar_suplente(
     suplente_id: int,
     nombre: str,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    actor: Usuario = Depends(usuario_actual),
 ):
 
     suplente = db.query(
@@ -304,7 +410,8 @@ def editar_suplente(
 @router.delete("/suplentes/{suplente_id}")
 def eliminar_suplente(
     suplente_id: int,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    actor: Usuario = Depends(usuario_actual),
 ):
 
     suplente = db.query(

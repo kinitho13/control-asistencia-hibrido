@@ -1,5 +1,8 @@
 import { useEffect, useMemo, useState } from "react";
-import { API_URL } from "../config";
+import { API_URL, apiFetch } from "../config";
+import Exportaciones from "../components/Exportaciones";
+import FiltroPersonas from "../components/FiltroPersonas";
+import { useFiltroPersonas } from "../hooks/useFiltroPersonas";
 
 const MESES = [
   "Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio",
@@ -28,6 +31,7 @@ function Gantt() {
 
   const [datos, setDatos] = useState([]);
   const [festivos, setFestivos] = useState([]);
+  const [cierres, setCierres] = useState([]);
   const [reemplazos, setReemplazos] = useState([]);
   const [mes, setMes] = useState(hoy.getMonth());
   const [anio, setAnio] = useState(hoy.getFullYear());
@@ -36,15 +40,6 @@ function Gantt() {
 
   // ---------- Carga de datos ----------
   useEffect(() => {
-fetch(`${API_URL}/calendario`)
-    .then((r) => r.json())
-    .then((data) => setDatos(data));
-
-  fetch(`${API_URL}/festivos`)
-    .then((r) => r.json())
-    .then((data) => setFestivos(data));
-
-
     const controlador = new AbortController();
 
     const cargar = async () => {
@@ -52,22 +47,20 @@ fetch(`${API_URL}/calendario`)
         setCargando(true);
         setError(null);
 
-        const [
-  resCalendario,
-  resFestivos,
-  resReemplazos
-] = await Promise.all([
-  fetch(`${API_URL}/calendario`, { signal: controlador.signal }),
-  fetch(`${API_URL}/festivos`, { signal: controlador.signal }),
-  fetch(`${API_URL}/reemplazos/todos`, { signal: controlador.signal }),
+        const [resCalendario, resFestivos, resCierres, resReemplazos] = await Promise.all([
+  apiFetch("/calendario", { signal: controlador.signal }),
+  apiFetch("/festivos", { signal: controlador.signal }),
+  apiFetch("/cierres", { signal: controlador.signal }),
+  apiFetch("/reemplazos/todos", { signal: controlador.signal }),
 ]);
 
-        if (!resCalendario.ok || !resFestivos.ok || !resReemplazos.ok) {
+        if (!resCalendario.ok || !resFestivos.ok || !resCierres.ok || !resReemplazos.ok) {
           throw new Error("El servidor respondió con un error.");
         }
 
         setDatos(await resCalendario.json());
         setFestivos(await resFestivos.json());
+        setCierres(await resCierres.json());
         setReemplazos(await resReemplazos.json());
       } catch (e) {
         if (e.name !== "AbortError") {
@@ -100,6 +93,17 @@ fetch(`${API_URL}/calendario`)
     () => new Set(festivos.map((f) => claveFecha(f.fecha))),
     [festivos]
   );
+  const cierresPorFecha = useMemo(() => {
+    const fechas = new Map();
+    cierres.forEach((cierre) => {
+      const inicio = new Date(`${claveFecha(cierre.fecha_inicio)}T00:00:00Z`);
+      const fin = new Date(`${claveFecha(cierre.fecha_fin)}T00:00:00Z`);
+      for (const dia = new Date(inicio); dia <= fin; dia.setUTCDate(dia.getUTCDate() + 1)) {
+        fechas.set(dia.toISOString().slice(0, 10), cierre.descripcion);
+      }
+    });
+    return fechas;
+  }, [cierres]);
   const reemplazosMapa = useMemo(() => {
 
   const mapa = {};
@@ -132,8 +136,18 @@ fetch(`${API_URL}/calendario`)
   }, [datos, mes, anio]);
 
   const usuarios = useMemo(
-    () => Object.keys(calendarioPorUsuario).sort((a, b) => a.localeCompare(b, "es")),
-    [calendarioPorUsuario]
+    () => [...new Set(datos.map((d) => d.usuario))].sort((a, b) => a.localeCompare(b, "es")),
+    [datos]
+  );
+  const {
+    personasSeleccionadas,
+    seleccionarPrincipales,
+    seleccionarTodos,
+    alternarPersona,
+  } = useFiltroPersonas(usuarios);
+  const usuariosDelMes = useMemo(
+    () => personasSeleccionadas.filter((usuario) => usuarios.includes(usuario)),
+    [personasSeleccionadas, usuarios]
   );
 
   const claveHoy = construirClave(hoy.getFullYear(), hoy.getMonth(), hoy.getDate());
@@ -141,9 +155,35 @@ fetch(`${API_URL}/calendario`)
   const contarModalidad = (usuario, modalidad) =>
     Object.values(calendarioPorUsuario[usuario] || {}).filter((m) => m === modalidad).length;
 
+  const filasExportacion = useMemo(
+    () => usuariosDelMes.map((usuario) => {
+      const fila = { Persona: usuario };
+      diasDelMes.forEach(({ dia, clave, diaSemana }) => {
+        const modalidad = calendarioPorUsuario[usuario]?.[clave];
+        const reemplazo = reemplazosMapa[`${clave}-${usuario}`];
+        fila[dia] = reemplazo
+          ? `${reemplazo.suplente} reemplaza a ${reemplazo.usuario}`
+          : modalidad
+            ? MODALIDADES[modalidad]?.etiqueta || modalidad
+            : setFestivosClaves.has(clave)
+              ? "Festivo"
+              : cierresPorFecha.has(clave)
+                ? `Cierre: ${cierresPorFecha.get(clave)}`
+              : diaSemana === 0 || diaSemana === 6
+                ? "Fin de semana"
+                : "";
+      });
+      const modalidades = Object.values(calendarioPorUsuario[usuario] || {});
+      fila.Casa = modalidades.filter((modalidad) => modalidad === "CASA").length;
+      fila.Oficina = modalidades.filter((modalidad) => modalidad === "OFICINA").length;
+      return fila;
+    }),
+    [usuariosDelMes, diasDelMes, calendarioPorUsuario, reemplazosMapa, setFestivosClaves, cierresPorFecha]
+  );
+
   // ---------- Render ----------
   return (
-    <div className="gantt">
+    <div className="gantt" id="reporte-exportable">
       <style>{estilos}</style>
 
       <header className="gantt__encabezado">
@@ -152,9 +192,17 @@ fetch(`${API_URL}/calendario`)
           <p>
   Festivos cargados: {festivos.length}
 </p>
+          <p>Cierres de oficina: {cierres.length}</p>
           <p className="gantt__subtitulo">
             Modalidad de trabajo por persona en {MESES[mes].toLowerCase()} de {anio}
           </p>
+          <FiltroPersonas
+            usuarios={usuarios}
+            seleccionados={personasSeleccionadas}
+            onSeleccionarPrincipales={seleccionarPrincipales}
+            onSeleccionarTodos={seleccionarTodos}
+            onAlternarPersona={alternarPersona}
+          />
         </div>
 
         <div className="gantt__controles">
@@ -180,6 +228,12 @@ fetch(`${API_URL}/calendario`)
               }}
             />
           </label>
+          <Exportaciones
+            nombreArchivo={`cronograma-${anio}-${String(mes + 1).padStart(2, "0")}`}
+            nombreHoja="Cronograma"
+            tituloPdf={`Cronograma ${MESES[mes]} ${anio}`}
+            filas={filasExportacion}
+          />
         </div>
       </header>
 
@@ -187,6 +241,7 @@ fetch(`${API_URL}/calendario`)
         <li><span className="muestra muestra--casa" /> Casa</li>
         <li><span className="muestra muestra--oficina" /> Oficina</li>
         <li><span className="muestra muestra--festivo" /> Festivo</li>
+        <li><span className="muestra muestra--cierre" /> Cierre de oficina</li>
         <li><span className="muestra muestra--finde" /> Fin de semana</li>
       </ul>
 
@@ -196,11 +251,11 @@ fetch(`${API_URL}/calendario`)
         <p className="estado estado--error" role="alert">{error}</p>
       )}
 
-      {!cargando && !error && usuarios.length === 0 && (
-        <p className="estado">No hay registros para {MESES[mes].toLowerCase()} de {anio}. Prueba con otro mes.</p>
+      {!cargando && !error && usuariosDelMes.length === 0 && (
+        <p className="estado">No hay personas visibles para {MESES[mes].toLowerCase()} de {anio}. Prueba con otro mes o cambia el filtro.</p>
       )}
 
-      {!cargando && !error && usuarios.length > 0 && (
+      {!cargando && !error && usuariosDelMes.length > 0 && (
         <div className="tabla-contenedor">
           <table className="tabla">
             <thead>
@@ -213,6 +268,7 @@ fetch(`${API_URL}/calendario`)
                     diaSemana === 1 ? "es-lunes" : "",
                     diaSemana === 0 || diaSemana === 6 ? "es-finde" : "",
                     setFestivosClaves.has(clave) ? "es-festivo" : "",
+                    cierresPorFecha.has(clave) ? "es-cierre" : "",
                     clave === claveHoy ? "es-hoy" : "",
                   ].join(" ");
 
@@ -230,15 +286,16 @@ fetch(`${API_URL}/calendario`)
             </thead>
 
             <tbody>
-              {usuarios.map((usuario) => (
+              {usuariosDelMes.map((usuario) => (
                 <tr key={usuario}>
                   <th scope="row" className="tabla__usuario">{usuario}</th>
 
                   {diasDelMes.map(({ clave, diaSemana }) => {
-                    const modalidad = calendarioPorUsuario[usuario][clave];
+                    const modalidad = calendarioPorUsuario[usuario]?.[clave];
                     const reemplazo =  reemplazosMapa[    `${clave}-${usuario}`  ];
                     const info = MODALIDADES[modalidad];
                     const esFestivo = setFestivosClaves.has(clave);
+                    const cierre = cierresPorFecha.get(clave);
                     const esFinde = diaSemana === 0 || diaSemana === 6;
 
                     const clases = [
@@ -248,6 +305,8 @@ fetch(`${API_URL}/calendario`)
                         ? "celda--reemplazo"
                         : esFestivo
                         ? "celda--festivo"
+                        : cierre
+                        ? "celda--cierre"
                         : info
                         ? `celda--${info.clase}`
                         : "",
@@ -261,16 +320,18 @@ fetch(`${API_URL}/calendario`)
                         : ""
                   ].join(" ");
 
-                    const titulo =  reemplazo? 
+                    const titulo =  reemplazo?
                     `${reemplazo.suplente} reemplaza a ${reemplazo.usuario}`
                         : esFestivo
                         ? "Festivo"
+                        : cierre
+                        ? `Cierre: ${cierre}`
                         : info
                         ? info.etiqueta
                         : "Sin registro";
                     return (
                       <td key={clave} className={clases} title={`${usuario} · ${clave} · ${titulo}`}>
-                        {reemplazo? "REP": !esFestivo && info? info.letra: ""}
+                        {reemplazo ? "REP" : cierre ? "×" : !esFestivo && info ? info.letra : ""}
                       </td>
                     );
                   })}
@@ -301,7 +362,7 @@ const estilos = `
   --lunes: #fff7e0;
   --hoy: #f59e0b;
 
-  font-family: "Inter", "Segoe UI", system-ui, -apple-system, sans-serif;
+  font-family: var(--sans);
   color: var(--tinta);
   background: var(--fondo);
   padding: 32px clamp(16px, 4vw, 48px);
@@ -333,6 +394,8 @@ const estilos = `
 
 .gantt__controles {
   display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
   gap: 12px;
 }
 
@@ -386,6 +449,7 @@ const estilos = `
 .muestra--casa { background: var(--casa); }
 .muestra--oficina { background: var(--oficina); }
 .muestra--festivo { background: var(--festivo); }
+.muestra--cierre { background: #7c3aed; }
 .muestra--finde { background: var(--finde); border: 1px solid var(--linea); }
 
 .estado {
@@ -454,6 +518,7 @@ thead .tabla__usuario { z-index: 3; color: var(--tinta-suave); font-weight: 500;
 .tabla__dia.es-lunes { background: var(--lunes); }
 .tabla__dia.es-finde { background: var(--finde); }
 .tabla__dia.es-festivo { background: #ffe4e6; color: var(--festivo); }
+.tabla__dia.es-cierre { background: #ede9fe; color: #6d28d9; }
 .tabla__dia.es-hoy { box-shadow: inset 0 -3px 0 var(--hoy); }
 
 .celda {
@@ -465,6 +530,7 @@ thead .tabla__usuario { z-index: 3; color: var(--tinta-suave); font-weight: 500;
 .celda--casa { background: var(--casa); }
 .celda--oficina { background: var(--oficina); }
 .celda--festivo { background: var(--festivo); }
+.celda--cierre { background: #7c3aed; }
 .celda--finde { background: var(--finde); }
 .celda--reemplazo {background: #f59e0b;}
 .celda.es-hoy { box-shadow: inset 0 0 0 2px var(--hoy); }

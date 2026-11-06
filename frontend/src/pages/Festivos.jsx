@@ -1,5 +1,13 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { API_URL } from "../config";
+import { API_URL, apiFetch } from "../config";
+
+function obtenerActorId() {
+  try {
+    return JSON.parse(localStorage.getItem("usuario") || "null")?.id;
+  } catch {
+    return undefined;
+  }
+}
 
 // "2026-10-20" o "2026-10-20T00:00:00" -> "2026-10-20" (sin desfase de zona horaria)
 const claveFecha = (valor) => String(valor).slice(0, 10);
@@ -46,7 +54,7 @@ function Festivos() {
 
   // ---------- Carga de datos ----------
   const cargarFestivos = useCallback(async () => {
-    const res = await fetch(`${API_URL}/festivos`);
+    const res = await apiFetch("/festivos");
     if (!res.ok) throw new Error("No se pudieron cargar los festivos.");
     setFestivos(await res.json());
   }, []);
@@ -100,8 +108,8 @@ function Festivos() {
     try {
       setGuardando(true);
 
-      const params = new URLSearchParams({ fecha, descripcion: limpia });
-      const res = await fetch(`${API_URL}/festivos?${params}`, { method: "POST" });
+      const params = new URLSearchParams({ fecha, descripcion: limpia, actor_id: obtenerActorId() });
+      const res = await apiFetch(`/festivos?${params}`, { method: "POST" });
 
       if (!res.ok) {
         setAviso({ tipo: "error", texto: await leerError(res, "No se pudo crear el festivo.") });
@@ -150,8 +158,8 @@ function Festivos() {
     try {
       setGuardando(true);
 
-      const params = new URLSearchParams({ fecha: fechaEditada, descripcion: limpia });
-      const res = await fetch(`${API_URL}/festivos/${id}?${params}`, { method: "PUT" });
+      const params = new URLSearchParams({ fecha: fechaEditada, descripcion: limpia, actor_id: obtenerActorId() });
+      const res = await apiFetch(`/festivos/${id}?${params}`, { method: "PUT" });
 
       if (!res.ok) {
         setAviso({ tipo: "error", texto: await leerError(res, "No se pudo actualizar el festivo.") });
@@ -173,7 +181,7 @@ function Festivos() {
     try {
       setGuardando(true);
 
-      const res = await fetch(`${API_URL}/festivos/${id}`, { method: "DELETE" });
+      const res = await apiFetch(`/festivos/${id}?actor_id=${obtenerActorId()}`, { method: "DELETE" });
 
       if (!res.ok) {
         setAviso({ tipo: "error", texto: await leerError(res, "No se pudo eliminar el festivo.") });
@@ -390,7 +398,7 @@ const estilos = `
   --primario-oscuro: #2f49b3;
   --festivo: #e11d48;
 
-  font-family: "Inter", "Segoe UI", system-ui, -apple-system, sans-serif;
+  font-family: var(--sans);
   color: var(--tinta);
   background: var(--fondo);
   padding: 32px clamp(16px, 4vw, 48px);

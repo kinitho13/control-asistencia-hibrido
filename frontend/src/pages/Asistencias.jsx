@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { API_URL } from "../config";
+import { API_URL, apiFetch } from "../config";
 
 const MESES = [
   "Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio",
@@ -7,13 +7,21 @@ const MESES = [
 ];
 const DIAS_CORTOS = ["dom", "lun", "mar", "mié", "jue", "vie", "sáb"];
 
+function obtenerActorId() {
+  try {
+    return JSON.parse(localStorage.getItem("usuario") || "null")?.id;
+  } catch {
+    return undefined;
+  }
+}
+
 /** Llama al backend y convierte los errores de FastAPI en mensajes legibles. */
 async function llamar(ruta, params = {}, metodo = "GET") {
   const query = new URLSearchParams(params).toString();
   let respuesta;
 
   try {
-    respuesta = await fetch(`${API_URL}${ruta}${query ? `?${query}` : ""}`, { method: metodo });
+    respuesta = await apiFetch(`${ruta}${query ? `?${query}` : ""}`, { method: metodo });
   } catch {
     throw new Error(`No se pudo conectar con el servidor (${API_URL}). Revisa que el backend esté encendido.`);
   }
@@ -87,7 +95,7 @@ function GeneradorCronograma() {
   };
 
   const generar = async () => {
-    const datos = await llamar("/cronograma/generar-mes-v2", { mes, anio }, "POST");
+    const datos = await llamar("/generar-mes-v2", { mes, anio, actor_id: obtenerActorId() }, "POST");
     setResultado({
       titulo: `Cronograma de ${MESES[mes - 1].toLowerCase()} ${anio} generado`,
       detalle: `${datos.registros_creados} registros creados`,
@@ -96,7 +104,7 @@ function GeneradorCronograma() {
   };
 
   const eliminar = async () => {
-    const datos = await llamar("/asistencias/mes", { anio, mes }, "DELETE");
+    const datos = await llamar("/asistencias/mes", { anio, mes, actor_id: obtenerActorId() }, "DELETE");
     return datos.eliminados;
   };
 
@@ -139,7 +147,7 @@ function GeneradorCronograma() {
     try {
       await llamar(
         `/asistencias/${seleccion.id}`,
-        { fecha: edicion.fecha, modalidad: edicion.modalidad },
+        { fecha: edicion.fecha, modalidad: edicion.modalidad, actor_id: obtenerActorId() },
         "PUT"
       );
       await cargarVista();
@@ -156,7 +164,7 @@ function GeneradorCronograma() {
     setGuardando(true);
     setErrorEdicion("");
     try {
-      await llamar(`/asistencias/${seleccion.id}`, {}, "DELETE");
+      await llamar(`/asistencias/${seleccion.id}`, { actor_id: obtenerActorId() }, "DELETE");
       await cargarVista();
       setSeleccion(null);
     } catch (e) {

@@ -1,5 +1,13 @@
 import { useCallback, useEffect, useState } from "react";
-import { API_URL } from "../config";
+import { API_URL, apiFetch } from "../config";
+
+function obtenerActorId() {
+  try {
+    return JSON.parse(localStorage.getItem("usuario") || "null")?.id;
+  } catch {
+    return undefined;
+  }
+}
 
 /** Intenta leer el mensaje de error que envía el servidor (campo "detail"). */
 const leerError = async (res, porDefecto) => {
@@ -14,6 +22,9 @@ const leerError = async (res, porDefecto) => {
 function Usuarios() {
   const [usuarios, setUsuarios] = useState([]);
   const [nombre, setNombre] = useState("");
+  const [usuarioLogin, setUsuarioLogin] = useState("");
+  const [passwordLogin, setPasswordLogin] = useState("");
+  const [rolNuevo, setRolNuevo] = useState("USUARIO");
 
   const [idEditando, setIdEditando] = useState(null);
   const [nombreEditado, setNombreEditado] = useState("");
@@ -25,7 +36,7 @@ function Usuarios() {
 
   // ---------- Carga de datos ----------
   const cargarUsuarios = useCallback(async () => {
-    const res = await fetch(`${API_URL}/usuarios`);
+    const res = await apiFetch("/usuarios");
     if (!res.ok) throw new Error("No se pudieron cargar los usuarios.");
     setUsuarios(await res.json());
   }, []);
@@ -60,6 +71,7 @@ function Usuarios() {
   // ---------- Acciones ----------
   const crearUsuario = async () => {
     const limpio = nombre.trim();
+    const loginLimpio = usuarioLogin.trim();
 
     if (!limpio) {
       setAviso({ tipo: "error", texto: "Escribe un nombre para el usuario." });
@@ -69,12 +81,28 @@ function Usuarios() {
       setAviso({ tipo: "error", texto: "Ya existe un usuario con ese nombre." });
       return;
     }
+    if (Boolean(loginLimpio) !== Boolean(passwordLogin)) {
+      setAviso({
+        tipo: "error",
+        texto: "Para crear el acceso, ingresa el usuario de login y la contraseña.",
+      });
+      return;
+    }
+    if (passwordLogin && passwordLogin.length < 6) {
+      setAviso({ tipo: "error", texto: "La contraseña debe tener al menos 6 caracteres." });
+      return;
+    }
 
     try {
       setGuardando(true);
 
-      const params = new URLSearchParams({ nombre: limpio });
-      const res = await fetch(`${API_URL}/usuarios?${params}`, { method: "POST" });
+      const params = new URLSearchParams({ nombre: limpio, actor_id: obtenerActorId() });
+      if (loginLimpio) {
+        params.set("usuario", loginLimpio);
+        params.set("password", passwordLogin);
+        params.set("rol", rolNuevo);
+      }
+      const res = await apiFetch(`/usuarios?${params}`, { method: "POST" });
 
       if (!res.ok) {
         setAviso({ tipo: "error", texto: await leerError(res, "No se pudo crear el usuario.") });
@@ -82,8 +110,16 @@ function Usuarios() {
       }
 
       setNombre("");
+      setUsuarioLogin("");
+      setPasswordLogin("");
+      setRolNuevo("USUARIO");
       await cargarUsuarios();
-      setAviso({ tipo: "ok", texto: "Usuario creado." });
+      setAviso({
+        tipo: "ok",
+        texto: loginLimpio
+          ? "Usuario creado con acceso de login."
+          : "Usuario creado sin acceso de login.",
+      });
     } catch {
       setAviso({ tipo: "error", texto: "No se pudo conectar con el servidor." });
     } finally {
@@ -117,8 +153,8 @@ function Usuarios() {
     try {
       setGuardando(true);
 
-      const params = new URLSearchParams({ nombre: limpio });
-      const res = await fetch(`${API_URL}/usuarios/${id}?${params}`, { method: "PUT" });
+      const params = new URLSearchParams({ nombre: limpio, actor_id: obtenerActorId() });
+      const res = await apiFetch(`/usuarios/${id}?${params}`, { method: "PUT" });
 
       if (!res.ok) {
         setAviso({ tipo: "error", texto: await leerError(res, "No se pudo actualizar el usuario.") });
@@ -139,7 +175,7 @@ function Usuarios() {
     try {
       setGuardando(true);
 
-      const res = await fetch(`${API_URL}/usuarios/${id}`, { method: "DELETE" });
+      const res = await apiFetch(`/usuarios/${id}?actor_id=${obtenerActorId()}`, { method: "DELETE" });
 
       if (!res.ok) {
         setAviso({ tipo: "error", texto: await leerError(res, "No se pudo eliminar el usuario.") });
@@ -188,6 +224,43 @@ function Usuarios() {
             />
           </label>
 
+          <label className="campo">
+            <span>Usuario de login (opcional)</span>
+            <input
+              type="text"
+              value={usuarioLogin}
+              onChange={(e) => setUsuarioLogin(e.target.value)}
+              placeholder="Ej. maria.gomez"
+              autoComplete="off"
+              disabled={cargando || guardando}
+            />
+          </label>
+
+          <label className="campo">
+            <span>Contraseña (mínimo 6 caracteres)</span>
+            <input
+              type="password"
+              value={passwordLogin}
+              onChange={(e) => setPasswordLogin(e.target.value)}
+              placeholder="Contraseña inicial"
+              autoComplete="new-password"
+              disabled={cargando || guardando}
+            />
+          </label>
+
+          <label className="campo">
+            <span>Rol de acceso</span>
+            <select
+              value={rolNuevo}
+              onChange={(e) => setRolNuevo(e.target.value)}
+              disabled={cargando || guardando}
+            >
+              <option value="USUARIO">USUARIO</option>
+              <option value="LIDER">LIDER</option>
+              <option value="ADMIN">ADMIN</option>
+            </select>
+          </label>
+
           <button
             type="button"
             className="boton boton--primario"
@@ -218,6 +291,8 @@ function Usuarios() {
                 <tr>
                   <th>ID</th>
                   <th>Nombre</th>
+                  <th>Usuario de login</th>
+                  <th>Rol</th>
                   <th className="tabla__acciones">Acciones</th>
                 </tr>
               </thead>
@@ -245,6 +320,9 @@ function Usuarios() {
                         u.nombre
                       )}
                     </td>
+
+                    <td>{u.usuario ? `@${u.usuario}` : "Sin login asignado"}</td>
+                    <td>{u.rol || "USUARIO"}</td>
 
                     <td className="tabla__acciones">
                       {idEditando === u.id ? (
@@ -311,14 +389,14 @@ const estilos = `
 .usuarios {
   --tinta: #1e293b;
   --tinta-suave: #64748b;
-  --linea: #e2e8f0;
-  --fondo: #f8fafc;
-  --superficie: #ffffff;
+  --linea: #a9adb3;
+  --fondo: #91b4d6;
+  --superficie: #7e7a7a;
   --primario: #3b5bdb;
   --primario-oscuro: #2f49b3;
   --peligro: #e11d48;
 
-  font-family: "Inter", "Segoe UI", system-ui, -apple-system, sans-serif;
+  font-family: var(--sans);
   color: var(--tinta);
   background: var(--fondo);
   padding: 32px clamp(16px, 4vw, 48px);
@@ -379,6 +457,7 @@ const estilos = `
 }
 
 .campo input,
+.campo select,
 .entrada-tabla {
   font: inherit;
   font-size: 0.95rem;
@@ -390,9 +469,11 @@ const estilos = `
   box-sizing: border-box;
 }
 .entrada-tabla { width: 100%; max-width: 320px; padding: 7px 10px; }
-.campo input:disabled { background: var(--fondo); }
+.campo input:disabled,
+.campo select:disabled { background: var(--fondo); }
 
 .campo input:focus-visible,
+.campo select:focus-visible,
 .entrada-tabla:focus-visible,
 .boton:focus-visible {
   outline: 2px solid var(--primario);

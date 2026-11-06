@@ -1,5 +1,13 @@
 import { useCallback, useEffect, useState } from "react";
-import { API_URL } from "../config";
+import { API_URL, apiFetch } from "../config";
+
+function obtenerActorId() {
+  try {
+    return JSON.parse(localStorage.getItem("usuario") || "null")?.id;
+  } catch {
+    return undefined;
+  }
+}
 
 const MESES = [
   "Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio",
@@ -13,7 +21,7 @@ async function llamar(ruta, params = {}, metodo = "GET") {
   let respuesta;
 
   try {
-    respuesta = await fetch(`${API_URL}${ruta}${query ? `?${query}` : ""}`, { method: metodo });
+    respuesta = await apiFetch(`${ruta}${query ? `?${query}` : ""}`, { method: metodo });
   } catch {
     throw new Error(`No se pudo conectar con el servidor (${API_URL}). Revisa que el backend esté encendido.`);
   }
@@ -109,7 +117,7 @@ function Reemplazos() {
 
       await llamar(
         "/reemplazos",
-        { fecha: form.fecha, usuario_id: form.usuarioId, suplente_id: suplenteId, motivo: form.motivo },
+        { fecha: form.fecha, usuario_id: form.usuarioId, suplente_id: suplenteId, motivo: form.motivo, actor_id: obtenerActorId() },
         "POST"
       );
 
@@ -149,7 +157,7 @@ function Reemplazos() {
     try {
       await llamar(
         `/reemplazos/${editando.id}`,
-        { suplente_id: editando.suplenteId, motivo: editando.motivo },
+        { suplente_id: editando.suplenteId, motivo: editando.motivo, actor_id: obtenerActorId() },
         "PUT"
       );
       await cargarReemplazos();
@@ -165,7 +173,7 @@ function Reemplazos() {
     if (!window.confirm(`¿Eliminar el reemplazo de ${r.usuario} del ${formatearFecha(r.fecha)}?`)) return;
     setError("");
     try {
-      await llamar(`/reemplazos/${r.id}`, {}, "DELETE");
+      await llamar(`/reemplazos/${r.id}`, { actor_id: obtenerActorId() }, "DELETE");
       if (editando?.id === r.id) setEditando(null);
       await cargarReemplazos();
     } catch (err) {

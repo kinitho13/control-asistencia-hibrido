@@ -1,0 +1,85 @@
+<svg xmlns="http://www.w3.org/2000/svg">
+  <symbol id="panel" viewBox="0 0 24 24">
+    <path d="m3 10 9-7 9 7v10a1 1 0 0 1-1 1h-5v-7H9v7H4a1 1 0 0 1-1-1z" />
+  </symbol>
+  <symbol id="usuarios" viewBox="0 0 24 24">
+    <path d="M16 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" />
+    <circle cx="10" cy="7" r="4" />
+    <path d="M20 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75" />
+  </symbol>
+  <symbol id="restricciones" viewBox="0 0 24 24">
+    <path d="M12 22s8-4 8-11V5l-8-3-8 3v6c0 7 8 11 8 11z" />
+    <path d="m9 9 6 6m0-6-6 6" />
+  </symbol>
+  <symbol id="festivos" viewBox="0 0 24 24">
+    <rect x="3" y="5" width="18" height="16" rx="2" />
+    <path d="M16 3v4M8 3v4M3 10h18" />
+    <path d="m12 12 1.1 2.2 2.4.4-1.75 1.7.4 2.4L12 17.6l-2.15 1.1.4-2.4-1.75-1.7 2.4-.4z" />
+  </symbol>
+  <symbol id="asistencias" viewBox="0 0 24 24">
+    <path d="M9 11 12 14 22 4" />
+    <path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11" />
+  </symbol>
+  <symbol id="calendario" viewBox="0 0 24 24">
+    <rect x="3" y="5" width="18" height="16" rx="2" />
+    <path d="M16 3v4M8 3v4M3 10h18M8 14h.01M12 14h.01M16 14h.01M8 17h.01M12 17h.01" />
+  </symbol>
+  <symbol id="cronograma" viewBox="0 0 24 24">
+    <path d="M3 3v18h18" />
+    <path d="M18 17V9M13 17V5M8 17v-3" />
+  </symbol>
+  <symbol id="reemplazos" viewBox="0 0 24 24">
+    <path d="m17 1 4 4-4 4M3 11V9a4 4 0 0 1 4-4h14M7 23l-4-4 4-4m14-1v2a4 4 0 0 1-4 4H3" />
+  </symbol>
+  <symbol id="solicitudes" viewBox="0 0 24 24">
+    <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+    <path d="M14 2v6h6M8 13h8M8 17h8" />
+  </symbol>
+  <symbol id="notificaciones" viewBox="0 0 24 24">
+    <path d="M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9" />
+    <path d="M10 21h4" />
+  </symbol>
+  <symbol id="reportes" viewBox="0 0 24 24">
+    <path d="M3 3v18h18" />
+    <path d="m7 14 4-4 4 3 6-7" />
+  </symbol>
+  <symbol id="historial" viewBox="0 0 24 24">
+    <path d="M3 12a9 9 0 1 0 2.64-6.36L3 8" />
+    <path d="M3 3v5h5M12 7v5l3 2" />
+  </symbol>
+  <symbol id="cierres" viewBox="0 0 24 24">
+    <path d="M3 21h18M5 21V7l7-4 7 4v14M9 21v-5h6v5M9 9h.01M15 9h.01M9 12h.01M15 12h.01" />
+  </symbol>
+  <symbol id="salir" viewBox="0 0 24 24">
+    <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
+    <path d="m16 17 5-5-5-5M21 12H9" />
+  </symbol>
+  <symbol id="casa" viewBox="0 0 24 24">
+    <path d="m3 10 9-7 9 7v10a1 1 0 0 1-1 1h-5v-7H9v7H4a1 1 0 0 1-1-1z" />
+  </symbol>
+  <symbol id="oficina" viewBox="0 0 24 24">
+    <path d="M3 21h18M5 21V7l7-4 7 4v14M9 21v-5h6v5M9 9h.01M15 9h.01M9 12h.01M15 12h.01" />
+  </symbol>
+  <symbol id="remoto" viewBox="0 0 24 24">
+    <path d="M20 16.2A4.5 4.5 0 0 0 18 7.5h-1.3A7 7 0 0 0 3 10a4 4 0 0 0 1 7.9h15a3 3 0 0 0 1-5.8" />
+  </symbol>
+  <symbol id="menu" viewBox="0 0 24 24">
+    <path d="M4 6h16M4 12h16M4 18h16" />
+  </symbol>
+  <symbol id="ojo" viewBox="0 0 24 24">
+    <path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7-10-7-10-7z" />
+    <circle cx="12" cy="12" r="3" />
+  </symbol>
+  <symbol id="ojo-cerrado" viewBox="0 0 24 24">
+    <path d="m3 3 18 18M10.6 10.6a2 2 0 0 0 2.8 2.8" />
+    <path d="M9.9 5.2A10.7 10.7 0 0 1 12 5c6.4 0 10 7 10 7a15.7 15.7 0 0 1-3.2 4.1M6.2 6.2A16.3 16.3 0 0 0 2 12s3.6 7 10 7a10.7 10.7 0 0 0 4-.8" />
+  </symbol>
+  <symbol id="alerta" viewBox="0 0 24 24">
+    <path d="M10.3 3.9 2.5 17.4A2 2 0 0 0 4.2 20h15.6a2 2 0 0 0 1.7-2.6L13.7 3.9a2 2 0 0 0-3.4 0z" />
+    <path d="M12 9v4m0 4h.01" />
+  </symbol>
+  <symbol id="marcacion" viewBox="0 0 24 24">
+    <circle cx="12" cy="12" r="9" />
+    <path d="M12 7v5l3 2M8 2h8M12 2v1" />
+  </symbol>
+</svg>

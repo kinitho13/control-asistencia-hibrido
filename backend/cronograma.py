@@ -10,12 +10,10 @@ Estructura:
   - Endpoint ....................... lee la BD, ejecuta el algoritmo, inserta
 """
 
-from fastapi import APIRouter
-
-router = APIRouter()
-
 import calendar
+import os
 import random
+import unicodedata
 from collections import Counter, defaultdict
 from dataclasses import dataclass, field
 from datetime import date, timedelta
@@ -27,9 +25,18 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, sessionmaker
 
 from database import engine
-from models import Asistencia, Festivo, Restriccion, Usuario
+from auth import usuario_actual_opcional
+from models import (
+    Asistencia,
+    Auditoria,
+    CierreOficina,
+    Festivo,
+    Notificacion,
+    Restriccion,
+    Usuario,
+)
 
-router = APIRouter(prefix="/cronograma", tags=["cronograma"])
+router = APIRouter(tags=["cronograma"])
 SessionLocal = sessionmaker(bind=engine)
 
 
@@ -45,8 +52,8 @@ def get_db():
 # Configuración
 # ---------------------------------------------------------------------------
 LUNES = 0
-CASA_POR_SEMANA = 2        # regla 5
-MAX_CASA_POR_DIA = 2       # regla 7
+CASA_POR_SEMANA = 1        # regla 5: días CASA por semana de cada persona con derecho a casa
+MAX_CASA_POR_DIA = 1       # regla 7: máximo de personas en CASA el mismo día (antes 2)
 MIN_EN_OFICINA = 1         # regla 8: siempre queda al menos 1 persona en OFICINA
 HISTORIAL_SEMANAS = 4      # semanas hacia atrás que se miran para rotar días
 
@@ -56,6 +63,26 @@ LIMITE_NODOS = 20_000      # tope de búsqueda (protege el tiempo de respuesta)
 PESO_DIA_REPETIDO = 3.0    # penaliza repetir el mismo día de la semana (reglas 11 y 12)
 PESO_PATRON_REPETIDO = 10.0  # penaliza repetir exactamente el patrón de la semana anterior
 RUIDO = 2.0                # aleatoriedad al ordenar candidatos (regla 10)
+
+# Solo estas personas rotan días en casa; el resto siempre va a OFICINA.
+# Se compara con el primer nombre, sin tildes ni mayúsculas ("René Pérez" -> "rene").
+# Se puede cambiar sin tocar el código con la variable de entorno CASA_USUARIOS
+# (por ejemplo: CASA_USUARIOS="Cristian,René,Juan,Fabian").
+CASA_USUARIOS = [
+    n.strip()
+    for n in os.getenv("CASA_USUARIOS", "Cristian,René,Juan,Fabian").split(",")
+    if n.strip()
+]
+
+
+def _normalizar(texto: str) -> str:
+    sin_tildes = unicodedata.normalize("NFKD", texto).encode("ascii", "ignore").decode()
+    return sin_tildes.strip().lower()
+
+
+def _primer_nombre(nombre: str) -> str:
+    partes = _normalizar(nombre).split()
+    return partes[0] if partes else ""
 
 
 # ---------------------------------------------------------------------------
@@ -68,10 +95,13 @@ class Estado:
     festivos: set[date]
     registros: dict[tuple[int, date], str]      # (usuario, fecha) -> modalidad ya existente
     capacidad_dia: int
+    casa_elegibles: set[int] | None = None      # quienes rotan días en casa (None = todos)
     casa_usuario: dict[int, set[date]] = field(default_factory=lambda: defaultdict(set))
     casa_dia: dict[date, set[int]] = field(default_factory=lambda: defaultdict(set))
 
     def __post_init__(self):
+        if self.casa_elegibles is None:
+            self.casa_elegibles = set(self.usuarios)
         for (u, d), modalidad in self.registros.items():
             if modalidad == "CASA":
                 self.registrar_casa(u, d)
@@ -188,6 +218,8 @@ def planificar_semana(estado: Estado, lunes: date, dias_casa: list[date]) -> Non
     hist, acumulado, patron_ant, wd_semana = {}, {}, {}, {}
 
     for u in estado.usuarios:
+        if u not in estado.casa_elegibles:
+            continue  # sin derecho a casa: siempre OFICINA
         fechas = estado.casa_usuario[u]
         en_semana = {d for d in fechas if lunes <= d <= domingo}
 
@@ -256,14 +288,23 @@ def construir_cronograma(estado, inicio, fin, nombres):
         if dias_casa:
             completa = inicio <= lunes and lunes + timedelta(days=4) <= fin
             domingo = lunes + timedelta(days=6)
+            # Con un solo cupo de CASA por día es normal que no alcance para todos:
+            # se avisa una vez por semana, no una vez por persona.
+            faltantes = []
             for u in estado.usuarios:
+                if u not in estado.casa_elegibles:
+                    continue
                 total = sum(1 for d in estado.casa_usuario[u] if lunes <= d <= domingo)
                 if total < CASA_POR_SEMANA:
-                    nota = "" if completa else " (semana parcial: se completa al generar el mes contiguo)"
-                    advertencias.append(
-                        f"Semana del {lunes:%Y-%m-%d}: {nombres[u]} tiene {total} día(s) "
-                        f"CASA de {CASA_POR_SEMANA}{nota}"
-                    )
+                    faltantes.append((nombres[u], total))
+            if faltantes:
+                nota = "" if completa else " (semana parcial: se completa al generar el mes contiguo)"
+                detalle = ", ".join(f"{nombre} ({total})" for nombre, total in faltantes)
+                advertencias.append(
+                    f"Semana del {lunes:%Y-%m-%d}: {len(faltantes)} de {len(estado.casa_elegibles)} "
+                    f"personas con menos de {CASA_POR_SEMANA} día(s) CASA, con cupo de "
+                    f"{estado.capacidad_dia} persona(s) en casa por día{nota}. {detalle}"
+                )
 
         lunes += timedelta(days=7)
 
@@ -273,12 +314,28 @@ def construir_cronograma(estado, inicio, fin, nombres):
 # ---------------------------------------------------------------------------
 # Endpoint
 # ---------------------------------------------------------------------------
-@router.post("/generar-mes-v2")
-def generar_mes_v2(mes: int, anio: int, db: Session = Depends(get_db)):
+# El frontend actual llama a /generar-mes-v2 (sin prefijo); también se publica
+# /cronograma/generar-mes-v2 para quien use la ruta con prefijo.
+@router.post("/cronograma/generar-mes-v2")
+@router.post("/generar-mes-v2", include_in_schema=False)
+def generar_mes_v2(
+    mes: int,
+    anio: int,
+    actor_id: int | None = None,
+    db: Session = Depends(get_db),
+    usuario_sesion: Usuario | None = Depends(usuario_actual_opcional),
+):
     if not 1 <= mes <= 12:
         raise HTTPException(status_code=400, detail="El mes debe estar entre 1 y 12.")
     if not 2000 <= anio <= 2100:
         raise HTTPException(status_code=400, detail="Año fuera de rango.")
+
+    # El responsable se valida antes de calcular nada
+    if actor_id is not None:
+        if not usuario_sesion:
+            raise HTTPException(status_code=401, detail="Inicia sesión para registrar el responsable.")
+        if usuario_sesion.id != actor_id:
+            raise HTTPException(status_code=403, detail="El responsable no coincide con la sesión.")
 
     # Evita que dos peticiones simultáneas generen el mismo mes (solo PostgreSQL)
     if db.get_bind().dialect.name == "postgresql":
@@ -290,6 +347,22 @@ def generar_mes_v2(mes: int, anio: int, db: Session = Depends(get_db)):
     ids = [u.id for u in usuarios]
     nombres = {u.id: u.nombre for u in usuarios}
 
+    # Quiénes rotan días en casa (el resto siempre queda en OFICINA)
+    por_primer_nombre = defaultdict(list)
+    for u in usuarios:
+        por_primer_nombre[_primer_nombre(u.nombre)].append(u.id)
+    elegibles: set[int] = set()
+    avisos_config: list[str] = []
+    for configurado in CASA_USUARIOS:
+        encontrados = por_primer_nombre.get(_primer_nombre(configurado), [])
+        if not encontrados:
+            avisos_config.append(f"No se encontró ningún usuario llamado «{configurado}» para los días en casa.")
+        elif len(encontrados) > 1:
+            avisos_config.append(
+                f"Hay {len(encontrados)} usuarios que empiezan por «{configurado}»; todos entran en el reparto de casa."
+            )
+        elegibles.update(encontrados)
+
     inicio = date(anio, mes, 1)
     fin = date(anio, mes, calendar.monthrange(anio, mes)[1])
 
@@ -298,12 +371,22 @@ def generar_mes_v2(mes: int, anio: int, db: Session = Depends(get_db)):
     domingo_final = fin + timedelta(days=6 - fin.weekday())
     desde = lunes_inicial - timedelta(weeks=HISTORIAL_SEMANAS)
 
-    festivos = {
+    dias_bloqueados = {
         f[0]
         for f in db.query(Festivo.fecha)
         .filter(Festivo.fecha >= lunes_inicial, Festivo.fecha <= domingo_final)
         .all()
     }
+    cierres = db.query(CierreOficina).filter(
+        CierreOficina.fecha_inicio <= domingo_final,
+        CierreOficina.fecha_fin >= lunes_inicial,
+    ).all()
+    for cierre in cierres:
+        desde_cierre = max(cierre.fecha_inicio, lunes_inicial)
+        hasta_cierre = min(cierre.fecha_fin, domingo_final)
+        while desde_cierre <= hasta_cierre:
+            dias_bloqueados.add(desde_cierre)
+            desde_cierre += timedelta(days=1)
 
     registros = {
         (u, f): m
@@ -320,16 +403,39 @@ def generar_mes_v2(mes: int, anio: int, db: Session = Depends(get_db)):
     estado = Estado(
         usuarios=ids,
         prohibidos=prohibidos,
-        festivos=festivos,
+        festivos=dias_bloqueados,
         registros=registros,
         capacidad_dia=max(0, min(MAX_CASA_POR_DIA, len(ids) - MIN_EN_OFICINA)),
+        casa_elegibles=elegibles,
     )
 
     nuevos, advertencias = construir_cronograma(estado, inicio, fin, nombres)
+    advertencias = avisos_config + advertencias
 
     db.add_all(
         Asistencia(usuario_id=u, fecha=f, modalidad=m) for u, f, m in nuevos
     )
+    if nuevos:
+        actor = db.query(Usuario).filter(Usuario.id == actor_id).first() if actor_id else None
+        asignaciones_por_usuario: dict[int, int] = defaultdict(int)
+        for usuario_id, _, _ in nuevos:
+            asignaciones_por_usuario[usuario_id] += 1
+        db.add_all(
+            Notificacion(
+                usuario_id=usuario_id,
+                mensaje=f"Se generó el cronograma de {mes:02d}/{anio} con {total} asignaciones.",
+            )
+            for usuario_id, total in asignaciones_por_usuario.items()
+        )
+        db.add(
+            Auditoria(
+                actor_id=actor.id if actor else None,
+                actor_nombre=actor.nombre if actor else "Sistema",
+                accion="GENERAR",
+                entidad="asistencia",
+                detalle=f"Generó {len(nuevos)} asignaciones del cronograma {anio}-{mes:02d}.",
+            )
+        )
     try:
         db.commit()
     except IntegrityError:
@@ -344,6 +450,7 @@ def generar_mes_v2(mes: int, anio: int, db: Session = Depends(get_db)):
         "mes": mes,
         "anio": anio,
         "registros_creados": len(nuevos),
+        "usuarios_con_casa": sorted(nombres[i] for i in elegibles),
     }
     if advertencias:
         respuesta["advertencias"] = advertencias

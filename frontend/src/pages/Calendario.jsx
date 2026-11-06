@@ -1,5 +1,8 @@
 import { useEffect, useMemo, useState } from "react";
-import { API_URL } from "../config";
+import { API_URL, apiFetch } from "../config";
+import Exportaciones from "../components/Exportaciones";
+import FiltroPersonas from "../components/FiltroPersonas";
+import { useFiltroPersonas } from "../hooks/useFiltroPersonas";
 
 import FullCalendar from "@fullcalendar/react";
 import dayGridPlugin from "@fullcalendar/daygrid";
@@ -25,8 +28,8 @@ const claveDesdeDate = (fecha) =>
 function Calendario() {
   const [asistencias, setAsistencias] = useState([]);
   const [festivos, setFestivos] = useState([]);
+  const [cierres, setCierres] = useState([]);
   const [reemplazos, setReemplazos] = useState([]);
-  const [usuarioFiltro, setUsuarioFiltro] = useState("");
   const [cargando, setCargando] = useState(true);
   const [error, setError] = useState(null);
   const [anioVisible, setAnioVisible] = useState(new Date().getFullYear());
@@ -41,20 +44,22 @@ function Calendario() {
         setError(null);
 
         const pedir = async (ruta) => {
-          const res = await fetch(`${API_URL}${ruta}`, { signal: controlador.signal });
+          const res = await apiFetch(ruta, { signal: controlador.signal });
           if (!res.ok) throw new Error(`Error en ${ruta}`);
           return res.json();
         };
 
-        const [dAsistencias, dFestivos, dReemplazos] =
+        const [dAsistencias, dFestivos, dCierres, dReemplazos] =
   await Promise.all([
     pedir("/calendario"),
     pedir("/festivos"),
+    pedir("/cierres"),
     pedir("/reemplazos/todos"),
   ]);
 
         setAsistencias(dAsistencias);
         setFestivos(dFestivos);
+        setCierres(dCierres);
         setReemplazos(dReemplazos);
       } catch (e) {
         if (e.name !== "AbortError") {
@@ -73,6 +78,16 @@ function Calendario() {
   const nombresUsuarios = useMemo(
     () => [...new Set(asistencias.map((a) => a.usuario))].sort((a, b) => a.localeCompare(b, "es")),
     [asistencias]
+  );
+  const {
+    personasSeleccionadas,
+    seleccionarPrincipales,
+    seleccionarTodos,
+    alternarPersona,
+  } = useFiltroPersonas(nombresUsuarios);
+  const personasVisibles = useMemo(
+    () => new Set(personasSeleccionadas),
+    [personasSeleccionadas]
   );
   const reemplazosPorFechaUsuario =
   useMemo(() => {
@@ -111,7 +126,7 @@ const deAsistencias = asistencias
 
     return (
       !reemplazosPorFechaUsuario[clave] &&
-      (!usuarioFiltro || a.usuario === usuarioFiltro)
+      personasVisibles.has(a.usuario)
     );
 
   })
@@ -136,6 +151,18 @@ const deAsistencias = asistencias
       allDay: true,
       classNames: ["evento", "evento--festivo"],
     }));
+    const deCierres = cierres.map((cierre) => {
+      const finExclusivo = new Date(`${claveFecha(cierre.fecha_fin)}T00:00:00Z`);
+      finExclusivo.setUTCDate(finExclusivo.getUTCDate() + 1);
+      return {
+        id: `cierre-${cierre.id}`,
+        title: `Cierre: ${cierre.descripcion}`,
+        start: claveFecha(cierre.fecha_inicio),
+        end: finExclusivo.toISOString().slice(0, 10),
+        allDay: true,
+        classNames: ["evento", "evento--cierre"],
+      };
+    });
     const deReemplazos = reemplazos.map((r) => ({
 
   id: `reemplazo-${r.id}`,
@@ -155,12 +182,49 @@ const deAsistencias = asistencias
 }));
 
     // Los festivos van primero para que aparezcan arriba en cada día
-    return [...deFestivos, ...deAsistencias, ...deReemplazos];
-  }, [asistencias, festivos, reemplazos, usuarioFiltro]);
+    return [...deFestivos, ...deCierres, ...deAsistencias, ...deReemplazos];
+  }, [asistencias, festivos, cierres, reemplazos, reemplazosPorFechaUsuario, personasVisibles]);
+
+  const filasExportacion = useMemo(() => {
+    const filas = asistencias
+      .filter((a) => (
+        personasVisibles.has(a.usuario) &&
+        !reemplazosPorFechaUsuario[`${claveFecha(a.fecha)}-${a.usuario}`]
+      ))
+      .map((a) => ({
+        Fecha: claveFecha(a.fecha),
+        Persona: a.usuario,
+        Registro: MODALIDADES[a.modalidad]?.etiqueta || a.modalidad,
+      }));
+
+    reemplazos.forEach((r) => filas.push({
+        Fecha: claveFecha(r.fecha),
+        Persona: r.usuario,
+        Registro: `${r.suplente} reemplaza a ${r.usuario}`,
+      }));
+
+    festivos.forEach((f) => filas.push({
+      Fecha: claveFecha(f.fecha),
+      Persona: "",
+      Registro: `Festivo: ${f.descripcion}`,
+    }));
+    cierres.forEach((cierre) => {
+      const fin = new Date(`${claveFecha(cierre.fecha_fin)}T00:00:00Z`);
+      for (const dia = new Date(`${claveFecha(cierre.fecha_inicio)}T00:00:00Z`); dia <= fin; dia.setUTCDate(dia.getUTCDate() + 1)) {
+        filas.push({
+          Fecha: dia.toISOString().slice(0, 10),
+          Persona: "",
+          Registro: `Cierre de oficina: ${cierre.descripcion}`,
+        });
+      }
+    });
+
+    return filas.sort((a, b) => a.Fecha.localeCompare(b.Fecha) || a.Persona.localeCompare(b.Persona, "es"));
+  }, [asistencias, festivos, cierres, reemplazos, reemplazosPorFechaUsuario, personasVisibles]);
 
   // ---------- Render ----------
   return (
-    <div className="calendario">
+    <div className="calendario" id="reporte-exportable">
       <style>{estilos}</style>
 
       <header className="calendario__encabezado">
@@ -169,25 +233,28 @@ const deAsistencias = asistencias
           <p className="calendario__subtitulo">Quién trabaja desde casa y quién desde la oficina cada día.</p>
         </div>
 
-        <label className="campo">
-          <span>Persona</span>
-          <select
-            value={usuarioFiltro}
-            onChange={(e) => setUsuarioFiltro(e.target.value)}
-            disabled={cargando || nombresUsuarios.length === 0}
-          >
-            <option value="">Todas las personas</option>
-            {nombresUsuarios.map((nombre) => (
-              <option key={nombre} value={nombre}>{nombre}</option>
-            ))}
-          </select>
-        </label>
+        <div className="calendario__acciones">
+          <FiltroPersonas
+            usuarios={nombresUsuarios}
+            seleccionados={personasSeleccionadas}
+            onSeleccionarPrincipales={seleccionarPrincipales}
+            onSeleccionarTodos={seleccionarTodos}
+            onAlternarPersona={alternarPersona}
+          />
+          <Exportaciones
+            nombreArchivo="calendario-asistencias"
+            nombreHoja="Calendario"
+            tituloPdf="Calendario de asistencias"
+            filas={filasExportacion}
+          />
+        </div>
       </header>
 
       <ul className="leyenda" aria-label="Leyenda">
         <li><span className="muestra muestra--casa" /> Casa</li>
         <li><span className="muestra muestra--oficina" /> Oficina</li>
         <li><span className="muestra muestra--festivo" /> Festivo</li>
+        <li><span className="muestra muestra--cierre" /> Cierre de oficina</li>
       </ul>
 
       {cargando && <p className="estado">Cargando calendario…</p>}
@@ -238,7 +305,7 @@ const estilos = `
   --festivo: #e11d48;
   --primario: #3b5bdb;
 
-  font-family: "Inter", "Segoe UI", system-ui, -apple-system, sans-serif;
+  font-family: var(--sans);
   color: var(--tinta);
   background: var(--fondo);
   padding: 32px clamp(16px, 4vw, 48px);
@@ -257,6 +324,7 @@ const estilos = `
 
 .calendario__titulo { margin: 0; font-size: 1.75rem; font-weight: 700; letter-spacing: -0.02em; }
 .calendario__subtitulo { margin: 4px 0 0; color: var(--tinta-suave); font-size: 0.95rem; }
+.calendario__acciones { display: grid; justify-items: end; gap: 10px; }
 
 .campo {
   display: flex;
@@ -294,6 +362,7 @@ const estilos = `
 .muestra--casa { background: var(--casa); }
 .muestra--oficina { background: var(--oficina); }
 .muestra--festivo { background: var(--festivo); }
+.muestra--cierre { background: #7c3aed; }
 
 .estado {
   background: var(--superficie);
@@ -357,6 +426,7 @@ const estilos = `
 .calendario .fc .evento--casa { background: var(--casa); }
 .calendario .fc .evento--oficina { background: var(--oficina); }
 .calendario .fc .evento--festivo { background: var(--festivo); }
+.calendario .fc .evento--cierre { background: #7c3aed; border-color: #7c3aed; }
 .calendario .fc .evento--reemplazo { background: #f59e0b;
 }
 
@@ -365,6 +435,7 @@ const estilos = `
 @media (max-width: 640px) {
   .calendario__contenedor { padding: 10px; }
   .calendario .fc .fc-toolbar { flex-direction: column; gap: 10px; }
+  .calendario__acciones { justify-items: start; }
 }
 `;
 

@@ -1,14 +1,31 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { API_URL } from "../config";
+import { apiFetch } from "../config";
+import Icono from "../components/Icono";
 
 const ROLES = ["ADMIN", "LIDER", "USUARIO"];
 const MIN_PASSWORD = 6;
+
+function obtenerActorId() {
+  try {
+    return JSON.parse(localStorage.getItem("usuario") || "null")?.id;
+  } catch {
+    return undefined;
+  }
+}
 
 /** Saca un mensaje legible de una respuesta de error de la API. */
 function mensajeDeError(data, porDefecto) {
   const detalle = data?.detail;
   return typeof detalle === "string" ? detalle : porDefecto;
 }
+
+const iniciales = (texto) =>
+  (texto || "?")
+    .split(" ")
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((p) => p[0].toUpperCase())
+    .join("");
 
 function AdminUsuarios() {
   const [usuarios, setUsuarios] = useState([]);
@@ -36,7 +53,7 @@ function AdminUsuarios() {
   const cargarLista = useCallback(async () => {
     setErrorLista("");
     try {
-      const response = await fetch(`${API_URL}/usuarios`);
+      const response = await apiFetch("/usuarios");
       const data = await response.json();
       if (!response.ok || !Array.isArray(data)) {
         throw new Error(mensajeDeError(data, "No se pudo cargar la lista."));
@@ -60,48 +77,6 @@ function AdminUsuarios() {
     return () => clearTimeout(t);
   }, [aviso]);
 
-  /* ---------- Cargar un usuario ---------- */
-  const cargarUsuario = async (id) => {
-    if (String(id) === String(usuarioId)) return;
-
-    if (hayCambios && !window.confirm("Tienes cambios sin guardar. ¿Descartarlos?")) {
-      return;
-    }
-
-    setUsuarioId(id);
-    setAviso(null);
-    setPassword("");
-    setVerPassword(false);
-    setCargandoUsuario(true);
-
-    const turno = ++peticionActual.current;
-
-        try {
-      const data = usuarios.find((u) => String(u.id) === String(id));
-      if (!data) throw new Error("Usuario no encontrado.");
-      if (turno !== peticionActual.current) return;
-
-      const datos = {
-        nombre: data.nombre || "",
-        usuario: data.usuario || "",
-        rol: (data.rol || "USUARIO").toUpperCase(),
-        activo: data.activo ?? true,
-      };
-      setNombre(datos.nombre);
-      setUsuario(datos.usuario);
-      setRol(datos.rol);
-      setActivo(datos.activo);
-      setOriginal(datos);
-    } catch (err) {
-      if (turno !== peticionActual.current) return;
-      setOriginal(null);
-      setUsuarioId("");
-      setAviso({ tipo: "error", texto: err.message || "No se pudo conectar con el servidor." });
-    } finally {
-      if (turno === peticionActual.current) setCargandoUsuario(false);
-    }
-  };
-
   /* ---------- Estado derivado ---------- */
   const hayCambios = useMemo(() => {
     if (!original) return false;
@@ -122,6 +97,49 @@ function AdminUsuarios() {
         (u.usuario || "").toLowerCase().includes(q)
     );
   }, [usuarios, busqueda]);
+
+  /* ---------- Cargar un usuario ---------- */
+  const cargarUsuario = (id) => {
+    if (String(id) === String(usuarioId)) return;
+
+    if (hayCambios && !window.confirm("Tienes cambios sin guardar. ¿Descartarlos?")) {
+      return;
+    }
+
+    setUsuarioId(id);
+    setAviso(null);
+    setPassword("");
+    setVerPassword(false);
+    setCargandoUsuario(true);
+
+    const turno = ++peticionActual.current;
+
+    try {
+      // Los datos ya vienen en la lista; no hace falta otra petición
+      const data = usuarios.find((u) => String(u.id) === String(id));
+      if (!data) throw new Error("Usuario no encontrado.");
+      if (turno !== peticionActual.current) return;
+
+      const datos = {
+        nombre: data.nombre || "",
+        usuario: data.usuario || "",
+        rol: (data.rol || "USUARIO").toUpperCase(),
+        activo: data.activo ?? true,
+      };
+      setNombre(datos.nombre);
+      setUsuario(datos.usuario);
+      setRol(datos.rol);
+      setActivo(datos.activo);
+      setOriginal(datos);
+    } catch (err) {
+      if (turno !== peticionActual.current) return;
+      setOriginal(null);
+      setUsuarioId("");
+      setAviso({ tipo: "error", texto: err.message || "No se pudo cargar el usuario." });
+    } finally {
+      if (turno === peticionActual.current) setCargandoUsuario(false);
+    }
+  };
 
   /* ---------- Acciones ---------- */
   const descartar = () => {
@@ -154,22 +172,22 @@ function AdminUsuarios() {
       if (!window.confirm(`¿Bloquear a ${nombre}? No podrá iniciar sesión.`)) return;
     }
 
-    const params = new URLSearchParams({
-      usuario: usuarioLimpio,
-      rol,
-      activo: String(activo),
-    });
+    // Los datos (y la contraseña) viajan en el cuerpo, no en la URL
+    const cuerpo = { usuario: usuarioLimpio, rol, activo };
+    const actorId = obtenerActorId();
+    if (actorId != null) cuerpo.actor_id = actorId;
     // Solo se envía la contraseña si se escribió una nueva
-    if (password) params.set("password", password);
+    if (password) cuerpo.password = password;
 
     setGuardando(true);
     setAviso(null);
 
     try {
-      const response = await fetch(
-        `${API_URL}/usuarios/${usuarioId}/credenciales?${params.toString()}`,
-        { method: "PUT" }
-      );
+      const response = await apiFetch(`/usuarios/${usuarioId}/credenciales`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(cuerpo),
+      });
 
       let data = null;
       try {
@@ -198,14 +216,6 @@ function AdminUsuarios() {
       setGuardando(false);
     }
   };
-
-  const iniciales = (texto) =>
-    (texto || "?")
-      .split(" ")
-      .filter(Boolean)
-      .slice(0, 2)
-      .map((p) => p[0].toUpperCase())
-      .join("");
 
   /* ---------- Render ---------- */
   return (
@@ -279,11 +289,15 @@ function AdminUsuarios() {
         <section className="adm__panel">
           {!usuarioId ? (
             <div className="adm__placeholder">
-              <span aria-hidden="true">👈</span>
+              <Icono nombre="usuarios" className="adm__placeholder-icono" />
               <p>Selecciona un usuario de la lista para editarlo.</p>
             </div>
           ) : (
-            <form onSubmit={guardar} noValidate className={cargandoUsuario ? "adm__form adm__form--carga" : "adm__form"}>
+            <form
+              onSubmit={guardar}
+              noValidate
+              className={cargandoUsuario ? "adm__form adm__form--carga" : "adm__form"}
+            >
               <div className="adm__cabecera">
                 <span className="adm__avatar adm__avatar--grande" aria-hidden="true">{iniciales(nombre)}</span>
                 <div>
@@ -299,7 +313,7 @@ function AdminUsuarios() {
                   className={aviso.tipo === "ok" ? "adm__aviso adm__aviso--ok" : "adm__aviso adm__aviso--error"}
                   role={aviso.tipo === "ok" ? "status" : "alert"}
                 >
-                  {aviso.tipo === "ok" ? "✅" : "⚠️"} {aviso.texto}
+                  {aviso.texto}
                 </div>
               )}
 
@@ -339,7 +353,7 @@ function AdminUsuarios() {
                     aria-label={verPassword ? "Ocultar contraseña" : "Mostrar contraseña"}
                     title={verPassword ? "Ocultar contraseña" : "Mostrar contraseña"}
                   >
-                    {verPassword ? "🙈" : "👁️"}
+                    <Icono nombre={verPassword ? "ojo-cerrado" : "ojo"} className="adm__ojo-icono" />
                   </button>
                 </div>
               </label>
@@ -404,7 +418,7 @@ const estilos = `
   margin: 0 auto;
   padding: 24px;
   box-sizing: border-box;
-  font-family: "Inter", "Segoe UI", system-ui, -apple-system, sans-serif;
+  font-family: var(--sans);
   color: #1e293b;
 }
 .adm__titulo { margin: 0; font-size: 1.5rem; letter-spacing: -0.01em; }
@@ -482,15 +496,15 @@ const estilos = `
 /* ---------- Formulario ---------- */
 .adm__placeholder {
   display: grid;
-  place-items: center;
-  gap: 6px;
+  justify-items: center;
+  gap: 10px;
   padding: 60px 20px;
   text-align: center;
   font-size: 0.95rem;
   color: #64748b;
 }
-.adm__placeholder span { font-size: 2rem; }
 .adm__placeholder p { margin: 0; }
+.adm__placeholder-icono { width: 36px; height: 36px; opacity: 0.7; }
 
 .adm__form { display: flex; flex-direction: column; gap: 16px; transition: opacity 0.2s; }
 .adm__form--carga { opacity: 0.6; pointer-events: none; }
@@ -544,14 +558,19 @@ const estilos = `
   top: 50%;
   right: 6px;
   transform: translateY(-50%);
+  display: grid;
+  place-items: center;
   width: 32px;
   height: 32px;
   border: none;
   border-radius: 8px;
   background: transparent;
+  color: #64748b;
   cursor: pointer;
 }
 .adm__ojo:hover { background: #f1f5f9; }
+.adm__ojo:focus-visible { outline: 2px solid #3b5bdb; outline-offset: 1px; }
+.adm__ojo-icono { width: 18px; height: 18px; }
 
 .adm__acciones { display: flex; justify-content: flex-end; gap: 10px; margin-top: 4px; }
 .adm__boton {

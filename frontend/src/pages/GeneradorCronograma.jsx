@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { API_URL } from "../config";
+import { apiFetch } from "../config";
 
 function GeneradorCronograma() {
 
@@ -13,8 +13,8 @@ function GeneradorCronograma() {
 
   const generarCronograma = async () => {
 
-    const response = await fetch(
-      `${API_URL}/cronograma/generar-mes-v2?mes=${mes}&anio=${anio}`,
+    const response = await apiFetch(
+      `/generar-mes-v2?mes=${mes}&anio=${anio}`,
       {
         method: "POST"
       }

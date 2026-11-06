@@ -14,4 +14,11 @@ if DATABASE_URL.startswith("postgresql://"):
         1
     )
 
-engine = create_engine(DATABASE_URL)
+# Configuración de pool de conexiones para producción
+engine = create_engine(
+    DATABASE_URL,
+    pool_size=10,
+    max_overflow=20,
+    pool_pre_ping=True,
+    pool_recycle=3600,
+)

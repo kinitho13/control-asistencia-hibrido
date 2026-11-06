@@ -1,0 +1,256 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8" />
+<title>Preview dashboard</title>
+<style>
+:root { --sans: "Segoe UI", system-ui, sans-serif; }
+html, body { margin: 0; background: #000; }
+.marco { width: 1440px; height: 900px; transform: scale(0.625); transform-origin: top left; }
+
+.dashboard {
+  --tinta: #f8fafc; --tinta-suave: #b8c1d9; --linea: rgba(255,255,255,.13);
+  --casa: #5eead4; --oficina: #93c5fd;
+  display: flex; flex-direction: column; gap: 12px; height: 100dvh; overflow: hidden;
+  padding: 16px 26px 18px; box-sizing: border-box; font-family: var(--sans); color: var(--tinta);
+  background: radial-gradient(ellipse at 75% 0%, rgba(51,65,85,.3), transparent 42%), linear-gradient(135deg,#030712,#050816 48%,#111827);
+}
+.dashboard__encabezado { flex: 0 0 auto; display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 14px; }
+.dashboard__eyebrow { margin: 0 0 2px; color: #cbd5e1; font-size: .62rem; font-weight: 700; letter-spacing: .2em; }
+.dashboard__titulo { margin: 0; font-size: 1.5rem; font-weight: 700; letter-spacing: -.04em; color: #fff; }
+.dashboard__subtitulo { margin: 1px 0 0; color: var(--tinta-suave); font-size: .76rem; text-transform: capitalize; }
+.dashboard__controles { display: flex; gap: 8px; padding: 7px; border: 1px solid var(--linea); border-radius: 12px; background: rgba(255,255,255,.045); }
+.campo { display: flex; flex-direction: column; gap: 3px; font-size: .64rem; font-weight: 600; color: var(--tinta-suave); }
+.campo select, .campo input { font: inherit; font-size: .82rem; color: #f8fafc; background: rgba(255,255,255,.08); border: 1px solid rgba(255,255,255,.14); border-radius: 8px; padding: 5px 9px; min-width: 112px; }
+.campo input { min-width: 0; width: 74px; }
+
+.operacion { flex: 0 0 auto; display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 6px 10px; border: 1px solid var(--linea); border-radius: 11px; background: rgba(255,255,255,.045); }
+.operacion__titulo { margin: 0 4px 0 0; color: #fff; font-size: .78rem; font-weight: 700; letter-spacing: .12em; text-transform: uppercase; }
+.operacion__dato { padding: 3px 9px; border-radius: 7px; color: #cbd5e1; background: rgba(255,255,255,.07); font-size: .76rem; }
+.operacion__dato strong { color: #fff; }
+.operacion__dato--casa strong { color: var(--casa); }
+.operacion__dato--oficina strong { color: var(--oficina); }
+.operacion__acciones { display: flex; gap: 6px; margin-left: auto; }
+.operacion__acciones a { padding: 4px 10px; border: 1px solid rgba(94,234,212,.24); border-radius: 8px; color: #e2e8f0; background: linear-gradient(135deg,rgba(15,118,110,.34),rgba(37,99,235,.22)); font-size: .76rem; text-decoration: none; }
+
+.panel, .resumen { border: 1px solid var(--linea); background: linear-gradient(145deg,rgba(255,255,255,.085),rgba(255,255,255,.04)); box-shadow: 0 14px 36px rgba(0,0,0,.2), inset 0 1px rgba(255,255,255,.07); }
+.resumen { flex: 0 0 auto; display: grid; grid-template-columns: repeat(6, minmax(0,1fr)); overflow: hidden; border-radius: 14px; }
+.resumen__item { display: flex; flex-direction: column; gap: 2px; min-width: 0; padding: 9px 12px; border-right: 1px solid rgba(255,255,255,.09); }
+.resumen__valor { font-size: 1.45rem; font-weight: 700; letter-spacing: -.035em; color: #f8fafc; }
+.resumen__item--4 .resumen__valor { color: var(--casa); }
+.resumen__item--5 .resumen__valor { color: var(--oficina); }
+.resumen__etiqueta { font-size: .7rem; color: var(--tinta-suave); }
+.resumen__icono { width: 15px; height: 15px; border: 1px solid #cbd5e1; border-radius: 4px; }
+
+.dashboard__cuerpo { flex: 1 1 auto; min-height: 0; display: grid; grid-template-columns: minmax(0,1.05fr) minmax(0,.95fr); gap: 12px; }
+.panel { border-radius: 14px; padding: 12px 14px; min-width: 0; }
+.panel__titulo { margin: 0 0 8px; font-size: .88rem; font-weight: 650; color: #f8fafc; }
+.panel--personas { display: flex; flex-direction: column; min-height: 0; }
+.personas__encabezado { display: flex; flex-wrap: wrap; align-items: flex-start; justify-content: space-between; gap: 6px 12px; margin-bottom: 8px; }
+.personas__encabezado .panel__titulo { margin-bottom: 2px; }
+.personas__meta { margin: 0; color: var(--tinta-suave); font-size: .72rem; }
+.personas__alerta { padding: 3px 9px; border: 1px solid rgba(251,191,36,.35); border-radius: 999px; color: #fde68a; background: rgba(120,53,15,.28); font-size: .7rem; font-weight: 600; white-space: nowrap; }
+.personas { list-style: none; margin: 0; padding: 0 4px 0 0; flex: 1 1 auto; min-height: 0; overflow-y: auto; display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%,260px),1fr)); align-content: start; gap: 7px; }
+.persona { border: 1px solid rgba(255,255,255,.09); border-radius: 11px; background: rgba(255,255,255,.035); }
+.persona--abierta { border-color: rgba(94,234,212,.42); background: rgba(94,234,212,.06); }
+.persona__boton { display: flex; align-items: center; gap: 9px; width: 100%; padding: 8px 10px; border: 0; border-radius: 11px; background: none; font: inherit; color: inherit; text-align: left; cursor: pointer; }
+.persona__avatar { display: grid; flex: 0 0 auto; width: 30px; height: 30px; place-items: center; border-radius: 9px; color: #04231f; background: linear-gradient(135deg,#5eead4,#93c5fd); font-size: .66rem; font-weight: 800; }
+.persona__detalle { display: grid; flex: 1 1 auto; gap: 4px; min-width: 0; }
+.persona__fila { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
+.persona__nombre { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: .82rem; font-weight: 600; color: #f1f5f9; }
+.persona__total { flex: 0 0 auto; color: #e2e8f0; font-size: .7rem; }
+.persona__cifras { display: flex; flex-wrap: wrap; gap: 2px 10px; color: var(--tinta-suave); font-size: .68rem; }
+.persona__cifra { display: inline-flex; align-items: center; gap: 5px; white-space: nowrap; }
+.persona__punto { width: 6px; height: 6px; border-radius: 50%; flex: 0 0 auto; }
+.persona__punto--casa { background: var(--casa); }
+.persona__punto--oficina { background: var(--oficina); }
+.persona__flecha { flex: 0 0 auto; width: 7px; height: 7px; margin-right: 2px; border-right: 1.6px solid rgba(226,232,240,.75); border-bottom: 1.6px solid rgba(226,232,240,.75); transform: rotate(45deg) translateY(-2px); }
+.persona__flecha--abierta { transform: rotate(225deg) translateY(-2px); }
+.persona__dias { display: grid; gap: 8px; padding: 2px 10px 10px; border-top: 1px solid rgba(255,255,255,.08); margin: 0 0 2px; }
+.persona__grupo-titulo { display: flex; align-items: center; gap: 6px; margin: 8px 0 4px; font-size: .72rem; font-weight: 600; color: #e2e8f0; }
+.chips { display: flex; flex-wrap: wrap; gap: 4px; list-style: none; margin: 0; padding: 0; }
+.chip { display: inline-flex; align-items: baseline; gap: 3px; padding: 2px 7px; border-radius: 7px; font-size: .72rem; font-weight: 700; }
+.chip small { font-size: .58rem; font-weight: 600; opacity: .75; }
+.chip--casa { color: #b8fff4; background: rgba(20,184,166,.22); border: 1px solid rgba(94,234,212,.34); }
+.chip--oficina { color: #cfe4ff; background: rgba(59,130,246,.2); border: 1px solid rgba(147,197,253,.32); }
+.barra { display: flex; height: 18px; border-radius: 999px; overflow: hidden; background: rgba(255,255,255,.1); }
+.barra--delgada { height: 7px; }
+.barra__relleno { display: flex; height: 100%; border-radius: 999px; overflow: hidden; }
+.barra__tramo--casa { background: linear-gradient(90deg,#14b8a6,#5eead4); }
+.barra__tramo--oficina { background: linear-gradient(90deg,#3b82f6,#93c5fd); }
+
+.dashboard__lado { display: grid; grid-template-columns: repeat(2, minmax(0,1fr)); grid-template-rows: repeat(2, minmax(0,1fr)); gap: 12px; min-height: 0; }
+.panel--compacto { display: flex; flex-direction: column; min-height: 0; padding: 10px 12px; }
+.panel--compacto .panel__titulo { font-size: .8rem; margin-bottom: 6px; }
+.grafico__lienzo { flex: 1 1 auto; width: 100%; min-height: 0; border: 1px dashed rgba(148,163,184,.35); border-radius: 8px; display: grid; place-items: center; color: #64748b; font-size: .7rem; }
+.dona { display: flex; align-items: center; gap: 8px; flex: 1 1 auto; min-height: 0; }
+.dona__lienzo { position: relative; flex: 1 1 auto; height: 100%; min-height: 60px; display: grid; place-items: center; }
+.dona__aro { width: 96px; height: 96px; border-radius: 50%; background: conic-gradient(#5eead4 0 62%, #93c5fd 62% 100%); mask: radial-gradient(circle, transparent 58%, #000 59%); -webkit-mask: radial-gradient(circle, transparent 58%, #000 59%); }
+.dona__centro { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; }
+.dona__centro strong { color: #fff; font-size: 1.1rem; line-height: 1; }
+.dona__centro span { color: var(--tinta-suave); font-size: .6rem; }
+.leyenda { display: grid; gap: 5px; list-style: none; margin: 0; padding: 0; font-size: .68rem; color: var(--tinta-suave); white-space: nowrap; }
+.leyenda li { display: flex; align-items: center; gap: 5px; }
+.muestra { width: 8px; height: 8px; border-radius: 3px; display: inline-block; flex: 0 0 auto; }
+.muestra--casa { background: linear-gradient(135deg,#14b8a6,#5eead4); }
+.muestra--oficina { background: linear-gradient(135deg,#3b82f6,#93c5fd); }
+.calendario__rejilla { display: grid; grid-template-columns: repeat(7, minmax(0,1fr)); gap: 3px; flex: 1 1 auto; align-content: start; min-height: 0; }
+.calendario__dia-semana { padding-bottom: 1px; color: var(--tinta-suave); font-size: .58rem; text-align: center; }
+.calendario__celda { display: grid; min-width: 0; aspect-ratio: 1; place-items: center; border: 1px solid rgba(255,255,255,.08); border-radius: 5px; color: #f8fafc; background: rgba(255,255,255,.045); font-size: .6rem; }
+.calendario__celda--vacia { border-color: transparent; background: transparent; }
+.calendario__nota { margin: 6px 0 0; color: var(--tinta-suave); font-size: .64rem; line-height: 1.35; }
+</style>
+</head>
+<body>
+<div class="marco">
+<div class="dashboard">
+  <header class="dashboard__encabezado">
+    <div class="dashboard__identidad">
+      <p class="dashboard__eyebrow">RESUMEN GENERAL</p>
+      <h1 class="dashboard__titulo">Panel de control</h1>
+      <p class="dashboard__subtitulo">miércoles, 11 de marzo de 2026</p>
+    </div>
+    <div class="dashboard__controles">
+      <label class="campo"><span>Mes</span><select><option>Marzo</option></select></label>
+      <label class="campo"><span>Año</span><input type="number" value="2026" /></label>
+    </div>
+  </header>
+
+  <section class="operacion">
+    <h2 class="operacion__titulo">Hoy</h2>
+    <span class="operacion__dato"><strong>24</strong> asignaciones</span>
+    <span class="operacion__dato operacion__dato--casa"><strong>16</strong> en casa</span>
+    <span class="operacion__dato operacion__dato--oficina"><strong>8</strong> en oficina</span>
+    <span class="operacion__dato"><strong>3</strong> solicitudes</span>
+    <nav class="operacion__acciones"><a href="#">Solicitudes</a><a href="#">Asistencias</a><a href="#">Reemplazos</a></nav>
+  </section>
+
+  <section class="resumen">
+    <div class="resumen__item"><span class="resumen__icono"></span><span class="resumen__valor">28</span><span class="resumen__etiqueta">Usuarios</span></div>
+    <div class="resumen__item"><span class="resumen__icono"></span><span class="resumen__valor">42</span><span class="resumen__etiqueta">Restricciones</span></div>
+    <div class="resumen__item"><span class="resumen__icono"></span><span class="resumen__valor">264</span><span class="resumen__etiqueta">Asignaciones</span></div>
+    <div class="resumen__item"><span class="resumen__icono"></span><span class="resumen__valor">148</span><span class="resumen__etiqueta">Días en casa</span></div>
+    <div class="resumen__item"><span class="resumen__icono"></span><span class="resumen__valor">116</span><span class="resumen__etiqueta">Días en oficina</span></div>
+    <div class="resumen__item"><span class="resumen__icono"></span><span class="resumen__valor">56.1%</span><span class="resumen__etiqueta">Trabajo remoto</span></div>
+  </section>
+
+  <div class="dashboard__cuerpo">
+    <section class="panel panel--personas">
+      <div class="personas__encabezado">
+        <div>
+          <h2 class="panel__titulo">Por persona · Marzo 2026</h2>
+          <p class="personas__meta">24 personas · 264 asistencias · promedio 11 días</p>
+        </div>
+        <span class="personas__alerta">4 sin asignación</span>
+      </div>
+      <ul class="personas" id="personas"></ul>
+    </section>
+
+    <div class="dashboard__lado">
+      <section class="panel panel--compacto">
+        <h2 class="panel__titulo">Modalidad · Marzo</h2>
+        <div class="dona">
+          <div class="dona__lienzo"><div class="dona__aro"></div><div class="dona__centro"><strong>264</strong><span>asistencias</span></div></div>
+          <ul class="leyenda">
+            <li><span class="muestra muestra--casa"></span> Casa 148 · 56.1%</li>
+            <li><span class="muestra muestra--oficina"></span> Oficina 116 · 43.9%</li>
+          </ul>
+        </div>
+      </section>
+      <section class="panel panel--compacto">
+        <h2 class="panel__titulo">Por día de la semana</h2>
+        <div class="grafico__lienzo">gráfico de barras</div>
+      </section>
+      <section class="panel panel--compacto">
+        <h2 class="panel__titulo">Tendencia 2026</h2>
+        <div class="grafico__lienzo">gráfico de área</div>
+      </section>
+      <section class="panel panel--compacto">
+        <h2 class="panel__titulo">Actividad del mes</h2>
+        <div class="calendario__rejilla" id="calendario"></div>
+        <p class="calendario__nota">Día con más actividad: 12 de Marzo (24). 21 días con registros.</p>
+      </section>
+    </div>
+  </div>
+</div>
+</div>
+
+<script>
+const NOMBRES = [
+  "Ana María Cárdenas", "Cristian Caro", "Juan Pablo Restrepo", "Laura Restrepo",
+  "Sofía Ospina", "David Alejandro Muñoz", "Valentina Ríos", "Andrés Felipe Gómez",
+  "Camila Torres", "Sebastián Herrera", "Isabella Marín", "Mateo Salazar"
+];
+const DIASEM = ["Lun", "Mar", "Mié", "Jue", "Vie", "Sáb", "Dom"];
+const iniciales = (n) => n.trim().split(/\s+/).slice(0, 2).map((p) => p[0].toUpperCase()).join("");
+const pick = (n, seed) => Array.from({ length: n }, (_, i) => ((i * 3 + seed) % 26) + 1).sort((a, b) => a - b);
+const dSem = (d) => DIASEM[(new Date(2026, 2, d).getDay() + 6) % 7];
+
+const lista = document.getElementById("personas");
+const datos = NOMBRES.map((nombre, i) => {
+  const casa = 14 - (i % 5);
+  const oficina = 12 - (i % 4);
+  return { nombre, casa, oficina, total: casa + oficina, diasCasa: pick(casa, i + 1), diasOficina: pick(oficina, i + 7) };
+});
+const maximo = Math.max(...datos.map((d) => d.total));
+
+datos.forEach((p, i) => {
+  const enCasa = Math.round((p.casa / p.total) * 1000) / 10;
+  const enOficina = Math.round((p.oficina / p.total) * 1000) / 10;
+  const volumen = (p.total / maximo) * 100;
+  const abierta = i === 0;
+  const chips = (dias, clase) => dias.map((d) => `<li class="chip chip--${clase}">${d}<small>${dSem(d)}</small></li>`).join("");
+
+  const li = document.createElement("li");
+  li.className = "persona" + (abierta ? " persona--abierta" : "");
+  li.innerHTML = `
+    <button type="button" class="persona__boton">
+      <span class="persona__avatar">${iniciales(p.nombre)}</span>
+      <span class="persona__detalle">
+        <span class="persona__fila">
+          <span class="persona__nombre">${p.nombre}</span>
+          <span class="persona__total">${p.total} días</span>
+        </span>
+        <span class="barra barra--delgada">
+          <span class="barra__relleno" style="width:${volumen}%">
+            <span class="barra__tramo barra__tramo--casa" style="width:${enCasa}%"></span>
+            <span class="barra__tramo barra__tramo--oficina" style="width:${enOficina}%"></span>
+          </span>
+        </span>
+        <span class="persona__cifras">
+          <span class="persona__cifra"><span class="persona__punto persona__punto--casa"></span>${p.casa} casa</span>
+          <span class="persona__cifra"><span class="persona__punto persona__punto--oficina"></span>${p.oficina} oficina</span>
+        </span>
+      </span>
+      <span class="persona__flecha${abierta ? " persona__flecha--abierta" : ""}"></span>
+    </button>
+    ${abierta ? `<div class="persona__dias">
+      <div><p class="persona__grupo-titulo"><span class="persona__punto persona__punto--casa"></span>Días en casa (${p.casa})</p><ul class="chips">${chips(p.diasCasa, "casa")}</ul></div>
+      <div><p class="persona__grupo-titulo"><span class="persona__punto persona__punto--oficina"></span>Días en oficina (${p.oficina})</p><ul class="chips">${chips(p.diasOficina, "oficina")}</ul></div>
+    </div>` : ""}`;
+  lista.appendChild(li);
+});
+
+const cal = document.getElementById("calendario");
+["L", "M", "M", "J", "V", "S", "D"].forEach((d) => {
+  const s = document.createElement("span");
+  s.className = "calendario__dia-semana";
+  s.textContent = d;
+  cal.appendChild(s);
+});
+for (let v = 0; v < 6; v += 1) {
+  const s = document.createElement("span");
+  s.className = "calendario__celda calendario__celda--vacia";
+  cal.appendChild(s);
+}
+for (let d = 1; d <= 31; d += 1) {
+  const s = document.createElement("span");
+  const cantidad = d % 7 === 0 ? 0 : (d * 5) % 24;
+  s.className = "calendario__celda";
+  s.textContent = d;
+  if (cantidad) s.style.backgroundColor = `rgba(94,234,212,${0.16 + (cantidad / 24) * 0.72})`;
+  cal.appendChild(s);
+}
+</script>
+</body>
+</html>

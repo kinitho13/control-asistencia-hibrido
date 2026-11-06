@@ -50,7 +50,7 @@ const estilos = `
   background: #ffffff;
   border-bottom: 1px solid #e2e8f0;
   box-sizing: border-box;
-  font-family: "Inter", "Segoe UI", system-ui, -apple-system, sans-serif;
+  font-family: var(--sans);
 }
 
 .menu__marca {
